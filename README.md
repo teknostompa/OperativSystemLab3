@@ -16,11 +16,11 @@ block 1 är resarverat för fs, eftersom blocket har 4096 bytes, så har vi 4096
 om vi har en 16-bit signed int kan via ha upp till 32768 block om vi vill. Vi behöver dock bara 2048 för detta filsystem.
 
 ## Filesystem förklaring
-fs värden:
-2-2047		: diskspace
-0		: free
--1		: EOF
-2048 - 32768	: Invalid block number
+fs värden:<br/>
+2-2047		: diskspace<br/>
+0		: free<br/>
+-1		: EOF<br/>
+2048 - 32768	: Invalid block number<br/>
 -32768 - (-2) 	: Invalid block number 
 
 ## Förklaring av direntry
