@@ -30,14 +30,14 @@ en fil/subdirectory finns vid first_blk, en signed int som pekar på ett annat b
 det är där man läser directory eller första 4096 bytes av filen.
 size är storleken för en fil, eller 4096(?) för ett directory
 
-access rights är en 8 bitars int där 4-biten representerar read, 2-biten representerar write, 1-biten representerar execute.
-000 = 0, inga rättigheter
-001 = 1, exekvera
-010 = 2, skriv
-011 = 3, skriv, exekvera
-100 = 4, läs
-101 = 5, läs, exekvera
-110 = 6, läs, skriv
-111 = 7, alla rättigheter
+access rights är en 8 bitars int där 4-biten representerar read, 2-biten representerar write, 1-biten representerar execute.<br/>
+000 = 0, inga rättigheter<br/>
+001 = 1, exekvera<br/>
+010 = 2, skriv<br/>
+011 = 3, skriv, exekvera<br/>
+100 = 4, läs<br/>
+101 = 5, läs, exekvera<br/>
+110 = 6, läs, skriv<br/>
+111 = 7, alla rättigheter<br/>
 
 För att få ut en viss accesright så kan man ta (access_right & (RIGHT))/RIGHT för att få 1 eller 0.
