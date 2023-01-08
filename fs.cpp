@@ -251,16 +251,18 @@ int
 FS::cp(string sourcepath, string destpath)
 {
     cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
-    if(destpath == findInDir(destpath).file_name){
-        cout << "File already exists" << endl;
-        return 1;
-    }
     dir_entry source = findInDir(sourcepath);
     if(source.type == 1){ // Type is dir
         cout << "The selected file is a directory" << endl;
+        return 1;
     }
     if(source.access_rights == 0) {
         cout << "The selected file does not exist" << endl;
+        return 1;
+    }
+    if(destpath == findInDir(destpath).file_name){
+        cout << "File already exists" << endl;
+        return 1;
     }
     int dir_index = findInDir(2);
     // Find first block
@@ -302,10 +304,6 @@ int
 FS::mv(string sourcepath, string destpath)
 {
     cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
-    if(destpath == findInDir(destpath).file_name){
-        cout << "File already exists" << endl;
-        return 1;
-    }
     dir_entry source = findInDir(sourcepath);
     if(source.type == 1){ // Type is dir
         cout << "The selected file is a directory" << endl;
@@ -313,6 +311,10 @@ FS::mv(string sourcepath, string destpath)
     }
     if(source.access_rights == 0) {
         cout << "The selected file does not exist" << endl;
+        return 1;
+    }
+    if(destpath == findInDir(destpath).file_name){
+        cout << "File already exists" << endl;
         return 1;
     }
     source = createDirEntry(destpath, source.size, source.first_blk, source.type, source.access_rights);
@@ -410,7 +412,6 @@ FS::append(string filepath1, string filepath2)
     writeBlock(file_block, (uint8_t*)content.c_str());
 
     append_text = append_text.substr(0, std::min((int)append_text.length(), 4096));
-    cout << "hej" << endl;
     file_size -= fittable;
     int16_t next_space;
     while (file_size > 0)
