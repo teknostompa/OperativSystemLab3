@@ -52,8 +52,8 @@ public:
     dir_entry createDirEntry(std::string file_name, uint32_t size, uint16_t first_blk, uint8_t type, uint8_t access_rights);
     dir_entry findInDir(std::string file_name);
     int8_t findInDir(uint8_t type);
-    int8_t findFreeSpace();
-    int8_t findFreeSpace(uint16_t offset);
+    int16_t findFreeSpace();
+    int16_t findFreeSpace(uint16_t offset);
     int16_t get_no_dir_entries();
     int16_t get_next_block(int block);
 
