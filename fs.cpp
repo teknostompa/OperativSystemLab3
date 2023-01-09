@@ -157,8 +157,7 @@ FS::get_no_dir_entries(){
 int16_t 
 FS::get_next_block(int block){
     uint16_t *fs = (uint16_t*)readBlock(1);
-    int ret = fs[block];
-    return ret;
+    return fs[block];
 }
 
 FS::FS()
@@ -186,23 +185,24 @@ FS::format()
     delete[] blk;
     // Now we have to format the 1:th block so that all the fs values
     // are free and 0-1 is EOF according to specification.
-
+    int16_t *fs = (int16_t*)readBlock(1);
     for(int i = 0; i < disk.get_no_blocks(); i++){
         switch (i)
         {
         case 0:
-            fat[i] = FAT_EOF;
+            fs[i] = FAT_EOF;
             break;
         case 1:
-            fat[i] = FAT_EOF;
+            fs[i] = FAT_EOF;
             break;
         
         default:
-            fat[i] = FAT_FREE;
+            fs[i] = FAT_FREE;
             break;
         }
     }
-    disk.write(1, (uint8_t*)fat);
+    disk.write(1, (uint8_t*)fs);
+    delete[] fs;
     // When we are done, we delete references and return
     return 0;
 }
@@ -233,7 +233,7 @@ FS::create(string filepath)
     //Handle error where disk is full
     int fs_save = fs_index;
     //Update filesystem to include new file
-    uint16_t *fs = (uint16_t*)readBlock(1);
+    int16_t *fs = (int16_t*)readBlock(1);
     int temp_index = fs_index;
     for(int i = 0; i <= file.length()/4096; i++){
         fs_index = temp_index;
@@ -449,9 +449,6 @@ int
 FS::rm(string filepath)
 {
     cout << "FS::rm(" << filepath << ")\n";
-
-
-
     dir_entry file = findInDir(filepath);
     if(file.type == 1){ // Type is dir
         int empty = findInDir(0, currentDir + filepath + "/") + findInDir(1, currentDir + filepath + "/");
