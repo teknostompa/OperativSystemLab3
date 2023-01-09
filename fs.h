@@ -39,12 +39,8 @@ private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    int16_t currentDir;
-public:
-    FS();
-    ~FS();
-    // formats the disk, i.e., creates an empty file system
-    int format();
+    string currentDir = "/";
+
     bool hasPrivilege(int access_rights, int Privilege);
     std::string getLine();
     uint8_t* readBlock(int block);
@@ -52,10 +48,19 @@ public:
     dir_entry createDirEntry(std::string file_name, uint32_t size, uint16_t first_blk, uint8_t type, uint8_t access_rights);
     dir_entry findInDir(std::string file_name);
     int8_t findInDir(uint8_t type);
+    int8_t findInDir(uint8_t type, std::string dir_name);
+    int8_t findInDir(std::string file_name, std::string dir_name);
+    int8_t findIndexOfDir(std::string file_name);
     int16_t findFreeSpace();
+    int16_t findFreeSpace(std::string dir_name);
     int16_t findFreeSpace(uint16_t offset);
     int16_t get_no_dir_entries();
     int16_t get_next_block(int block);
+public:
+    FS();
+    ~FS();
+    // formats the disk, i.e., creates an empty file system
+    int format();
 
     // create <filepath> creates a new file on the disk, the data content is
     // written on the following rows (ended with an empty row)
