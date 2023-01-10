@@ -18,6 +18,29 @@ FS::getLine(){
     return file;
 }
 
+string 
+FS::getFile(string file_path, string dir_path){
+    dir_path = get_real_dir(dir_path);
+    string file = "";
+    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(dir_path));
+    int dir_index = -1;
+    dir_entry dir;
+    for(int i = 0; i < get_no_dir_entries(); i++){
+        if(dirs[i].file_name == file_path){
+            dir = dirs[i];
+        }
+    }
+    int16_t block = dir.first_blk;
+    for(int i = 0; i <= dir.size/4096; i++){
+        string content = (char*) readBlock(block);
+        content = content.substr(0, std::min((int)dir.size-4096*i, 4096));
+        file += content;
+        block = get_next_block(block);
+    }
+    return file;
+}
+
+
 uint8_t
 *FS::readBlock(int block){
     uint8_t *blk = new uint8_t[4096];
@@ -41,10 +64,46 @@ FS::createDirEntry(string file_name, uint32_t size, uint16_t first_blk, uint8_t 
     dir.size = size;
     return dir;
 }
+   
+int8_t
+FS::findIndexOfDir(string file_path){
+    file_path = get_real_dir(file_path);
+    file_path = file_path.substr(1); // remove first /
+    int index = 0;
+    int read_dir = 0;
+    dir_entry *dirs = (dir_entry*)readBlock(0);
+    while(file_path.length() > 1){
+        dirs = (dir_entry*)readBlock(read_dir);
+        string temp = file_path.substr(0, file_path.find_first_of('/'));
+        file_path = file_path.substr(file_path.find_first_of('/') + 1);
+        for(int i = 0 ; i < get_no_dir_entries(); i++){
+            if(dirs[i].file_name == temp){
+                index = i;
+            }
+        }
+        read_dir = dirs[index].first_blk;
+    }
+    return read_dir;
+}
+
+int8_t 
+FS::findInDir(uint8_t type, std::string dir_name){
+    dir_name = get_real_dir(dir_name);
+    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(dir_name));
+    int dir_index = -1;
+    for(int i = 0; i < get_no_dir_entries(); i++){
+        if(dirs[i].type == type){
+            return i;
+        }
+    }
+    return -1;
+}
 
 dir_entry 
-FS::findInDir(string file_name){
-    dir_entry *dirs = (dir_entry*)readBlock(0);
+FS::findInDir(std::string file_name, string dir_name){
+    dir_name = get_real_dir(dir_name);
+    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(dir_name));
+    int dir_index = -1;
     for(int i = 0; i < get_no_dir_entries(); i++){
         if(dirs[i].file_name == file_name){
             return dirs[i];
@@ -52,89 +111,17 @@ FS::findInDir(string file_name){
     }
     return createDirEntry("", 0, 0, 2, 0);
 }
-   
-int8_t
-FS::findIndexOfDir(string file_path){
-    file_path = file_path.substr(1); // remove first /
-    int index = -1;
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    while (file_path.length() > 1)
-    {
-        string temp_path = file_path.substr(0, file_path.find_first_of('/'));
-        index = -1;
-        for(int i = 0; i < get_no_dir_entries(); i++){
-            if(dirs[i].file_name == temp_path){
-                index = i;
-            }
-        }
-        if(index == -1){
-            cout << "Faulty path" << endl;
-        }
-        dir_entry *dirs = (dir_entry*)readBlock(index);
-        if(file_path.find_first_of('/') != -1){
-            file_path = file_path.substr(file_path.find_first_of('/'));
-        }
-    }
-
-    return dirs[index].first_blk;
-}
-
-int8_t 
-FS::findInDir(uint8_t type){
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    int dir_index = -1;
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        if(dirs[i].type == type){
-            return i;
-        }
-    }
-    return -1;
-}
-
-int8_t 
-FS::findInDir(uint8_t type, std::string dir_name){
-    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(dir_name));
-    int dir_index = -1;
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        if(dirs[i].type == type){
-            return i;
-        }
-    }
-    return -1;
-}
-
-int8_t 
-FS::findInDir(std::string file_name, string dir_name){
-    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(dir_name));
-    int dir_index = -1;
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        if(dirs[i].file_name == file_name){
-            return i;
-        }
-    }
-    return -1;
-}
 
 
 int16_t 
 FS::findFreeSpace(){
     uint16_t *fs = (uint16_t*)readBlock(1);
-    for(int i = 0; i < disk.get_no_blocks(); i++){
+    for(int i = 2; i < disk.get_no_blocks(); i++){
         if(fs[i] == FAT_FREE){
             return i;
         }
     }
-    return -1;
-}
-
-int16_t 
-FS::findFreeSpace(string dir_name){
-    uint16_t *fs = (uint16_t*)readBlock(findIndexOfDir(dir_name));
-    for(int i = 0; i < disk.get_no_blocks(); i++){
-        if(fs[i] == FAT_FREE){
-            return i;
-        }
-    }
+    cout << "The disk is full" << endl;
     return -1;
 }
 
@@ -160,6 +147,100 @@ FS::get_next_block(int block){
     return fs[block];
 }
 
+string 
+FS::get_real_dir(string dir_path){
+    if(dir_path.front() != '/') dir_path = '/' + dir_path;
+    if(dir_path.back() != '/') dir_path += '/';
+    return dir_path;
+}
+
+void 
+FS::writeDirectory(int16_t block){
+    dir_entry *blk = new dir_entry[get_no_dir_entries()];
+    dir_entry dir = createDirEntry("", 0, -1, 2, 0);
+    for(int i = 0; i < get_no_dir_entries(); i++){
+        memcpy(&blk[i], &dir, sizeof(dir_entry));
+    }
+    disk.write(block, (uint8_t*)blk);
+    
+    int16_t *fs = (int16_t*)readBlock(1);
+    fs[block] = FAT_EOF;
+    disk.write(1, (uint8_t*)fs);
+}
+
+int
+FS::writeFile(string file, int16_t fs_index){
+    int16_t *fs = (int16_t*)readBlock(1);
+    int temp_index = fs_index;
+    for(int i = 0; i <= file.length()/4096; i++){
+        fs_index = temp_index;
+        temp_index = findFreeSpace(fs_index);
+        if(temp_index == -1){
+            return -1;
+        }
+        fs[fs_index] = temp_index;
+        writeBlock(fs_index, (uint8_t*)(char*) file.substr(i*4096, (i+1)*4096).c_str());
+        writeBlock(1, (uint8_t*)fs);
+        uint16_t *fs = (uint16_t*)readBlock(1);
+    }
+    fs[fs_index] = FAT_EOF;
+    writeBlock(1, (uint8_t*)fs);
+    delete[] fs;
+    return 0;
+}
+
+int
+FS::writeEntryToDir(dir_entry entry, string dir_path){
+    int dir_index = findInDir(2, dir_path);
+    if(dir_index == -1) return -1;
+    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(get_real_dir(dir_path)));
+    memcpy(&dirs[dir_index], &entry, sizeof(dir_entry));
+    writeBlock(findIndexOfDir(dir_path), (uint8_t*)dirs);
+
+    delete[] dirs;
+    return 0;
+}
+
+int
+FS::writeEntryToDir(dir_entry entry, string dir_path, string old_name){
+    dir_path = get_real_dir(dir_path);
+    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(dir_path));
+    int index = -1;
+    for(int i = 0; i < get_no_dir_entries(); i++){
+        if(dirs[i].file_name == old_name){
+            index = i;
+        }
+    }
+    memcpy(&dirs[index], &entry, sizeof(dir_entry));
+    writeBlock(findIndexOfDir(dir_path), (uint8_t*)dirs);
+
+    return 0;
+}
+
+string 
+FS::get_dir_from_filepath(string filepath){
+    if(filepath == ".."){
+        return currentDir.substr(0, currentDir.find_last_of('/'));
+    }
+    if(filepath.substr(0,2) == "..") filepath = filepath.substr(2);
+    while(filepath.find(".") != -1){
+        int place = filepath.find_first_of(".");
+        for(int i = place-2; i > 0; i--){
+            if(filepath.at(i) == '/'){
+                filepath = filepath.substr(0, i) + filepath.substr(place + 2);
+                break;
+            }
+        }
+    }
+    return filepath.substr(0, filepath.find_last_of('/') + 1);
+}
+
+string 
+FS::get_name_from_filepath(string filepath){
+    if(filepath.substr(0,2) == "..") filepath = filepath.substr(2);
+    return filepath.substr(filepath.find_last_of('/') + 1);
+}
+
 FS::FS()
 {
     cout << "FS::FS()... Creating file system\n";
@@ -175,32 +256,15 @@ FS::format()
     cout << "FS::format()\n";
     // First we have to clean the 0:th block so that any remains
     // of the previous filesystem is deleted.
-
-    dir_entry *blk = new dir_entry[get_no_dir_entries()];
-    dir_entry dir = createDirEntry("", 0, -1, 2, 0);
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        memcpy(&blk[i], &dir, sizeof(dir_entry));
-    }
-    disk.write(0, (uint8_t*)blk);
-    delete[] blk;
+    writeDirectory(0);
     // Now we have to format the 1:th block so that all the fs values
     // are free and 0-1 is EOF according to specification.
     int16_t *fs = (int16_t*)readBlock(1);
     for(int i = 0; i < disk.get_no_blocks(); i++){
-        switch (i)
-        {
-        case 0:
-            fs[i] = FAT_EOF;
-            break;
-        case 1:
-            fs[i] = FAT_EOF;
-            break;
-        
-        default:
-            fs[i] = FAT_FREE;
-            break;
-        }
+        fs[i] = FAT_FREE;
     }
+    fs[0] = FAT_EOF;
+    fs[1] = FAT_EOF;
     disk.write(1, (uint8_t*)fs);
     delete[] fs;
     // When we are done, we delete references and return
@@ -213,62 +277,25 @@ int
 FS::create(string filepath)
 {
     cout << "FS::create(" << filepath << ")\n";
-    
     //Handle error for long filename
     if(filepath.length() > 55){
         cout<< "file name too long"<< endl;
         return 1;
     }
-
-    //Get full file content
     string file = getLine();
-
+    if(findInDir(filepath, currentDir).type != 2){
+        cout << "File already exists";
+    }
+    //Get full file content
     //Get free memoryspace on disk
     int fs_index = findFreeSpace();
-    if(fs_index == -1){
-        cout << "The disk is full" << endl;
-        return 1;
-    }
-
-    //Handle error where disk is full
-    int fs_save = fs_index;
-    //Update filesystem to include new file
-    int16_t *fs = (int16_t*)readBlock(1);
-    int temp_index = fs_index;
-    for(int i = 0; i <= file.length()/4096; i++){
-        fs_index = temp_index;
-        temp_index = findFreeSpace(fs_index);
-        if(temp_index == -1){
-            cout << "The disk is full" << endl;
-            return 1;
-        }
-        fs[fs_index] = temp_index;
-        if(fs_index == -1){
-            cout<< "No space left in filesystem" << endl;
-            return 1;
-        }
-        writeBlock(fs_index, (uint8_t*)(char*) file.substr(i*4096, (i+1)*4096).c_str());
-        uint16_t *fs = (uint16_t*)readBlock(1);
-        writeBlock(1, (uint8_t*)fs);
-    }
-    fs[fs_index] = FAT_EOF;
-    writeBlock(1, (uint8_t*)fs);
-    delete[] fs;
-    fs_index = fs_save;
+    if(fs_index == -1) return 1;
+    
+    if(writeFile(file, fs_index) == -1) return 1;
 
     //Find place for dir and make new direntry
-    int dir_index = findInDir(2);
-    if(dir_index == -1){
-        cout<< "No space left in directory" << endl;
-        return 1;
-    }
-    dir_entry dir = createDirEntry(filepath, file.length(), fs_index, 0, 7);
-
     //write new direntry to dir
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    memcpy(&dirs[dir_index], &dir, sizeof(dir_entry));
-    writeBlock(0, (uint8_t*)dirs);
-    delete[] dirs;
+    if(writeEntryToDir(createDirEntry(filepath, file.length(), fs_index, 0, 7), currentDir) == -1) return 1;
     return 0;
 }
 
@@ -278,20 +305,17 @@ FS::cat(string filepath)
 {
     cout << "FS::cat(" << filepath << ")\n";
 
-    if(findInDir(filepath).type == 1){
+    if(findInDir(filepath, currentDir).type == 1){
         cout << "Cannot read from directory" << endl;
         return 1;
     }
 
-    dir_entry dir = findInDir(filepath);
-    int16_t block = dir.first_blk;
-    for(int i = 0; i <= dir.size/4096; i++){
-        string content = (char*) readBlock(block);
-        content = content.substr(0, std::min((int)dir.size-4096*i, 4096));
-        cout << content;
-        block = get_next_block(block);
+    if(findInDir(filepath, currentDir).type == 2){
+        cout << "File not found" << endl;
+        return 1;
     }
-    cout << endl;
+
+    cout << getFile(filepath, currentDir) << endl;
     return 0;
 }
 
@@ -301,7 +325,7 @@ FS::ls()
 {
     cout << "FS::ls()\n";
     cout << "name\t type\t size\n";
-    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir + "/"));
+    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir));
     int dir_index = 0;
     for(int i = 0; i < get_no_dir_entries(); i++){
         if(dirs[i].type == 1){
@@ -324,83 +348,58 @@ int
 FS::cp(string sourcepath, string destpath)
 {
     cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
-    dir_entry source = findInDir(sourcepath);
+
+    string source_dir_name = get_dir_from_filepath(sourcepath);
+    if(source_dir_name == ""){
+        source_dir_name = currentDir;
+    }
+    string source_name = get_name_from_filepath(sourcepath);
+
+    string dest_dir_name = get_dir_from_filepath(destpath);
+    if(dest_dir_name == ""){
+        dest_dir_name = currentDir;
+    }
+    string dest_name = get_name_from_filepath(destpath);
+    if(dest_name == ""){
+        dest_name = source_name;
+    } 
+    dir_entry source = findInDir(source_name, source_dir_name);
     if(source.type == 1){ // Type is dir
         cout << "The selected file is a directory" << endl;
         return 1;
     }
-    if(findInDir(destpath).type == 1){ // Type is dir
-        int dir_index = findInDir(2, currentDir + destpath + "/");
+    if(findInDir(dest_name, dest_dir_name).type == 1){ // Type is dir
         // Find first block
         int8_t first_block = findFreeSpace();
-        if(first_block == -1){
-            cout << "The disk is full" << endl;
-            return 1;
-        }
+        if(first_block == -1) return 1;
 
         // Create dir entry for new file 
-        dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir + destpath + "/"));
-        dir_entry dest = createDirEntry(sourcepath, source.size, first_block, source.type, source.access_rights);
-        dirs[dir_index] = dest;
-        writeBlock(findIndexOfDir(currentDir + destpath + "/"), (uint8_t*)dirs);
-        
-        // Copy all blocks
-        int16_t source_block = source.first_blk;
-        int16_t *fs = (int16_t*)readBlock(1);
-        writeBlock(first_block, readBlock(source_block));
-        while(fs[source_block] != FAT_EOF){
-            fs[first_block] = findFreeSpace(currentDir + "/");
-            if(fs[first_block] == -1){
-                cout << "The disk is full" << endl;
-                return 1;
-            }
-            first_block = fs[first_block];
-            source_block = fs[source_block];
-            writeBlock(first_block, readBlock(source_block));
-        }
-        fs[first_block] = FAT_EOF;
-        writeBlock(1, (uint8_t*)fs);
+        dir_entry dest = createDirEntry(source_name, source.size, first_block, source.type, source.access_rights);
+        if(writeEntryToDir(dest, dest_dir_name + dest_name) == -1) return 1;
+
+        string file = getFile(source_name, source_dir_name);
+        writeFile(file, first_block);
         return 0;
     }
     if(source.access_rights == 0) {
         cout << "The selected file does not exist" << endl;
         return 1;
     }
-    if(destpath == findInDir(destpath).file_name){
+    if(destpath == findInDir(dest_name, dest_dir_name).file_name){
         cout << "File already exists" << endl;
         return 1;
     }
-    int dir_index = findInDir(2);
+
     // Find first block
     int8_t first_block = findFreeSpace();
-    if(first_block == -1){
-        cout << "The disk is full" << endl;
-        return 1;
-    }
+    if(first_block == -1) return 1;
 
-    // Create dir entry for new file
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    dir_entry dest = createDirEntry(destpath, source.size, first_block, source.type, source.access_rights);
-    dirs[dir_index] = dest;
-    writeBlock(0, (uint8_t*)dirs);
-    
-    // Copy all blocks
-    int16_t source_block = source.first_blk;
-    int16_t *fs = (int16_t*)readBlock(1);
-    writeBlock(first_block, readBlock(source_block));
-    while(fs[source_block] != FAT_EOF){
-        fs[first_block] = findFreeSpace();
-        if(fs[first_block] == -1){
-            cout << "The disk is full" << endl;
-            return 1;
-        }
-        first_block = fs[first_block];
-        source_block = fs[source_block];
-        writeBlock(first_block, readBlock(source_block));
-    }
-    fs[first_block] = FAT_EOF;
-    writeBlock(1, (uint8_t*)fs);
+    // Create dir entry for new file 
+    dir_entry dest = createDirEntry(dest_name, source.size, first_block, source.type, source.access_rights);
+    if(writeEntryToDir(dest, dest_dir_name) == -1) return 1;
 
+    string file = getFile(source_name, source_dir_name);
+    writeFile(file, first_block);
     return 0;
 }
 
@@ -410,37 +409,44 @@ int
 FS::mv(string sourcepath, string destpath)
 {
     cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
-    dir_entry source = findInDir(sourcepath);
+
+    string source_dir_name = get_dir_from_filepath(sourcepath);
+    if(source_dir_name == ""){
+        source_dir_name = currentDir;
+    }
+    string source_name = get_name_from_filepath(sourcepath);
+
+    string dest_dir_name = get_dir_from_filepath(destpath);
+    if(dest_dir_name == ""){
+        dest_dir_name = currentDir;
+    }
+    string dest_name = get_name_from_filepath(destpath);
+    if(dest_name == ""){
+        dest_name = source_name;
+    } 
+    cout << dest_dir_name << " : " << dest_name << endl;
+
+    dir_entry source = findInDir(source_name, source_dir_name);
     if(source.type == 1){
         cout << "The selected file is a directory" << endl;
         return 1;
     }
-    if(findInDir(destpath).type == 1){ // Type is dir
-        dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir + destpath + "/"));
-        int dir_index = findInDir(2, currentDir + destpath + "/");
-        memcpy(&dirs[dir_index], &source, sizeof(dir_entry));
-        writeBlock(findIndexOfDir(currentDir + destpath + "/"), (uint8_t*)dirs);
-
-        dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir + "/"));
-        dir_index = findInDir(sourcepath, currentDir + "/");
+    if(findInDir(dest_name, dest_dir_name).type == 1){ // Type is dir
+        writeEntryToDir(source, dest_dir_name + dest_name);
         source = createDirEntry("", 0, 0, 2, 0);
-        memcpy(&dirs[dir_index], &source, sizeof(dir_entry));
-        writeBlock(findIndexOfDir(currentDir + "/"), (uint8_t*)dirs);
+        writeEntryToDir(source, source_dir_name, source_name);
         return 0;
     }
-    if(source.access_rights == 0) {
-        cout << "The selected file does not exist" << endl;
-        return 1;
-    }
-    if(destpath == findInDir(destpath).file_name){
+    if(destpath == findInDir(dest_name, dest_dir_name).file_name){
         cout << "File already exists" << endl;
         return 1;
     }
-    source = createDirEntry(destpath, source.size, source.first_blk, source.type, source.access_rights);
-    dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir + "/"));
-    int dir_index = findInDir(sourcepath, currentDir + "/");
-    memcpy(&dirs[dir_index], &source, sizeof(dir_entry));
-    writeBlock(0, (uint8_t*)dirs);
+
+    source = createDirEntry(dest_name, source.size, source.first_blk, source.type, source.access_rights);
+    cout << dest_dir_name << " : " << dest_name << endl;
+    writeEntryToDir(source, dest_dir_name + dest_name);
+    source = createDirEntry("", 0, 0, 2, 0);
+    writeEntryToDir(source, source_dir_name, source_name);
     return 0;
 }
 
@@ -449,9 +455,9 @@ int
 FS::rm(string filepath)
 {
     cout << "FS::rm(" << filepath << ")\n";
-    dir_entry file = findInDir(filepath);
+    dir_entry file = findInDir(filepath, currentDir);
     if(file.type == 1){ // Type is dir
-        int empty = findInDir(0, currentDir + filepath + "/") + findInDir(1, currentDir + filepath + "/");
+        int empty = findInDir(0, currentDir + filepath) + findInDir(1, currentDir + filepath);
         if(empty != -2){
             cout << "Directory is not empty" << endl;
             return 1;
@@ -460,10 +466,7 @@ FS::rm(string filepath)
         int16_t *fs = (int16_t*)readBlock(1);
         fs[file.first_blk] = FAT_FREE;
         writeBlock(1, (uint8_t*)fs);
-
-        dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir + "/"));
-        dirs[findInDir(filepath, currentDir)] = createDirEntry("", 0, 0, 2, 0);
-        writeBlock(findIndexOfDir(currentDir + "/"), (uint8_t*)dirs);
+        writeEntryToDir(createDirEntry("", 0, 0, 2, 0), currentDir, filepath);
         return 0;
     }
     if(file.access_rights == 0) {
@@ -472,17 +475,7 @@ FS::rm(string filepath)
     }
 
     // Remove dir entry
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    int dir_index = -1;
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        if(dirs[i].file_name == filepath){
-            dir_index = i;
-            break;
-        }
-    }
-    dir_entry dir = createDirEntry("", 0, -1, 2, 0);
-    memcpy(&dirs[dir_index], &dir, sizeof(dir_entry));
-    writeBlock(0, (uint8_t*)dirs);
+    writeEntryToDir(createDirEntry("", 0, 0, 2, 0), currentDir, filepath);
     // Mark all fat blocks as free
     int16_t source_block = file.first_blk;
     int16_t *fs = (int16_t*)readBlock(1);
@@ -502,8 +495,8 @@ int
 FS::append(string filepath1, string filepath2)
 {
     cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
-    dir_entry file = findInDir(filepath1);
-    dir_entry file1 = findInDir(filepath2);
+    dir_entry file = findInDir(filepath1, currentDir);
+    dir_entry file1 = findInDir(filepath2, currentDir);
     if(file.type == 1 || file1.type == 1){ // Type is dir
         cout << "One of the files is a directory" << endl;
         return 1;
@@ -512,17 +505,7 @@ FS::append(string filepath1, string filepath2)
         cout << "One of the files does not exist" << endl;
         return 1;
     }
-    //Get the string to append
-    string append_text = "";
-    dir_entry dir = findInDir(filepath1);
-    int16_t block = dir.first_blk;
-    for(int i = 0; i <= dir.size/4096; i++){
-        string content = (char*) readBlock(block);
-        content = content.substr(0, std::min((int)dir.size-4096*i, 4096));
-        append_text += content;
-        block = get_next_block(block);
-    }
-    //
+    string append_text = getFile(filepath1, currentDir);
     int16_t *fs = (int16_t*)readBlock(1);
     int16_t file_block = file1.first_blk;
     int file_size = file1.size + file.size;
@@ -534,39 +517,10 @@ FS::append(string filepath1, string filepath2)
     string content = (char*) readBlock(file_block);
 
     content = content + append_text.substr(0,fittable);
-    writeBlock(file_block, (uint8_t*)content.c_str());
+    writeFile(content, file_block);
 
-    append_text = append_text.substr(0, std::min((int)append_text.length(), 4096));
-    file_size -= fittable;
-    int16_t next_space;
-    while (file_size > 0)
-    {
-        next_space = findFreeSpace();
-        if(next_space == -1){
-            cout << "The disk is full" << endl;
-            return 1;
-        }
-        writeBlock(next_space, (uint8_t*)append_text.substr(0,std::min((int)append_text.length(), 4096)).c_str());
-        fs[file_block] = next_space;
-        file_block = next_space;
-        writeBlock(1, (uint8_t*)fs);
-        int16_t *fs = (int16_t*)readBlock(1);
-        file_size -= std::min((int)append_text.length(), 4096);
-    }
-    
-    fs[file_block] = FAT_EOF;
-
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    int dir_index = -1;
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        if(dirs[i].file_name == filepath2){
-            dir_index = i;
-            break;
-        }
-    }
     dir_entry source = createDirEntry(file1.file_name, temp_size, file1.first_blk, file1.type, file1.access_rights);
-    memcpy(&dirs[dir_index], &source, sizeof(dir_entry));
-    writeBlock(0, (uint8_t*)dirs);
+    writeEntryToDir(source, currentDir, file1.file_name);
     return 0;
 }
 
@@ -576,52 +530,33 @@ int
 FS::mkdir(string dirpath)
 {
     cout << "FS::mkdir(" << dirpath << ")\n";
-    
+    string dir_name = get_dir_from_filepath(dirpath);
+    if(dir_name == ""){
+        dir_name = currentDir;
+    }
+    string name = get_name_from_filepath(dirpath);
     //Handle error for long filename
-    if(dirpath.length() > 55){
+    if(name.length() > 55){
         cout<< "file name too long"<< endl;
         return 1;
     }
 
-    if(findInDir(dirpath, currentDir) != -1){
+    if(findInDir(name, dir_name).type != 2){
         cout << "Specified path is already used" << endl;
         return 1;
     }
 
     //Get free memoryspace on disk
     int fs_index = findFreeSpace();
-    if(fs_index == -1){
-        cout << "The disk is full" << endl;
-        return 1;
-    }
+    if(fs_index == -1) return 1;
 
-    //Update filesystem to include new file
-    uint16_t *fs = (uint16_t*)readBlock(1);
-
-    fs[fs_index] = FAT_EOF;
-    writeBlock(1, (uint8_t*)fs);
-    delete[] fs;
-
-    //Find place for dir and make new direntry
-    int dir_index = findInDir(2);
-    if(dir_index == -1){
-        cout<< "No space left in directory" << endl;
-        return 1;
-    }
-    dir_entry dir = createDirEntry(dirpath, 0, fs_index, 1, 7);
+    writeDirectory(fs_index);
+    
 
     //write new direntry to dir
-    dir_entry *dirs = (dir_entry*)readBlock(0);
-    memcpy(&dirs[dir_index], &dir, sizeof(dir_entry));
-    writeBlock(0, (uint8_t*)dirs);
+    dir_entry dir = createDirEntry(name, 0, fs_index, 1, 7);
+    writeEntryToDir(dir, dir_name);
 
-    dir_entry *blk = (dir_entry*)readBlock(fs_index);
-    dir = createDirEntry("", 0, -1, 2, 0);
-    for(int i = 0; i < get_no_dir_entries(); i++){
-        memcpy(&blk[i], &dir, sizeof(dir_entry));
-    }
-    writeBlock(fs_index, (uint8_t*)blk);
-    delete[] dirs;
     return 0;
 }
 
@@ -630,14 +565,26 @@ int
 FS::cd(string dirpath)
 {
     cout << "FS::cd(" << dirpath << ")\n";
-    if(dirpath == ".."){
-        if(currentDir.length() > 1){
-            currentDir = currentDir.substr(0, currentDir.length()-2);
-            currentDir = currentDir.substr(0, currentDir.find_last_of("/") + 1);
+    string dir_name = get_dir_from_filepath(dirpath);
+    if(dir_name == ""){
+        dir_name = currentDir;
+    }
+    string name = get_name_from_filepath(dirpath);
+
+    if(dir_name == "/"){
+        currentDir = dir_name + name;
+        return 0;
+    }
+    if(name == ".."){
+        if(dir_name.length() > 1){
+            dir_name = dir_name.substr(0, dir_name.find_last_of("/"));
+        }
+        if(dir_name == ""){
+            dir_name = "/";
         }
         return 0;
     }
-    switch (findInDir(dirpath).type)
+    switch (findInDir(name, dir_name).type)
     {
     case 0:
         cout << "Can't cd into a file" << endl;
@@ -648,7 +595,7 @@ FS::cd(string dirpath)
         if(currentDir.length() > 1){
             currentDir += "/";
         }
-        currentDir += dirpath;
+        currentDir += name;
         break;
 
     case 2:

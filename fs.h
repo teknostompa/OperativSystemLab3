@@ -42,20 +42,25 @@ private:
     string currentDir = "/";
 
     bool hasPrivilege(int access_rights, int Privilege);
-    std::string getLine();
+    string getLine();
+    string getFile(string file_path, string dir_path);
     uint8_t* readBlock(int block);
     void writeBlock(int block, uint8_t* data);
     dir_entry createDirEntry(std::string file_name, uint32_t size, uint16_t first_blk, uint8_t type, uint8_t access_rights);
-    dir_entry findInDir(std::string file_name);
-    int8_t findInDir(uint8_t type);
     int8_t findInDir(uint8_t type, std::string dir_name);
-    int8_t findInDir(std::string file_name, std::string dir_name);
+    dir_entry findInDir(std::string file_name, std::string dir_name);
     int8_t findIndexOfDir(std::string file_name);
     int16_t findFreeSpace();
-    int16_t findFreeSpace(std::string dir_name);
     int16_t findFreeSpace(uint16_t offset);
     int16_t get_no_dir_entries();
     int16_t get_next_block(int block);
+    string get_real_dir(string dir_path);
+    void writeDirectory(int16_t block);
+    int writeFile(string file, int16_t first_block);
+    int writeEntryToDir(dir_entry entry, string dir_path);
+    int writeEntryToDir(dir_entry entry, string dir_path, string old_name);
+    string get_dir_from_filepath(string filepath);
+    string get_name_from_filepath(string filepath);
 public:
     FS();
     ~FS();
