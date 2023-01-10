@@ -295,7 +295,7 @@ FS::create(string filepath)
 
     //Find place for dir and make new direntry
     //write new direntry to dir
-    if(writeEntryToDir(createDirEntry(filepath, file.length(), fs_index, 0, 7), currentDir) == -1) return 1;
+    if(writeEntryToDir(createDirEntry(filepath, file.length(), fs_index, 0, READ + WRITE), currentDir) == -1) return 1;
     return 0;
 }
 
@@ -304,6 +304,11 @@ int
 FS::cat(string filepath)
 {
     cout << "FS::cat(" << filepath << ")\n";
+
+    if(!hasPrivilege(findInDir(filepath, currentDir).access_rights, READ)){
+        cout << "Permission Denied";
+        return 1;
+    }
 
     if(findInDir(filepath, currentDir).type == 1){
         cout << "Cannot read from directory" << endl;
@@ -324,17 +329,35 @@ int
 FS::ls()
 {
     cout << "FS::ls()\n";
-    cout << "name\t type\t size\n";
+    cout << "name\t type\t accessrights\t size\n";
     dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir));
     int dir_index = 0;
     for(int i = 0; i < get_no_dir_entries(); i++){
         if(dirs[i].type == 1){
-            cout<<dirs[i].file_name << "\t dir\t " << "-" << endl;
+            string access = ((hasPrivilege(dirs[i].access_rights, READ)) ? "r" : "-");
+            access += ((hasPrivilege(dirs[i].access_rights, WRITE)) ? 'w': '-');
+            access += ((hasPrivilege(dirs[i].access_rights, EXECUTE)) ? 'x': '-');
+            if(access.substr(0,2) == "--"){
+                access = access.substr(1);
+            }
+            if(access.substr(1) == "--"){
+                access = access.substr(0,2);
+            }
+            cout<<dirs[i].file_name << "\t dir\t " << access << "\t -" << endl;
         }
     }
     for(int i = 0; i < get_no_dir_entries(); i++){
         if(dirs[i].type == 0){
-            cout<<dirs[i].file_name << "\t file\t " << to_string(dirs[i].size) << endl;
+            string access = ((hasPrivilege(dirs[i].access_rights, READ)) ? "r" : "-");
+            access += ((hasPrivilege(dirs[i].access_rights, WRITE)) ? 'w': '-');
+            access += ((hasPrivilege(dirs[i].access_rights, EXECUTE)) ? 'x': '-');
+            if(access.substr(0,2) == "--"){
+                access = access.substr(1);
+            }
+            if(access.substr(1) == "--"){
+                access = access.substr(0,2);
+            }
+            cout<<dirs[i].file_name << "\t file\t " << access << "\t " << to_string(dirs[i].size) << endl;
         }
     }
     
@@ -380,10 +403,6 @@ FS::cp(string sourcepath, string destpath)
         string file = getFile(source_name, source_dir_name);
         writeFile(file, first_block);
         return 0;
-    }
-    if(source.access_rights == 0) {
-        cout << "The selected file does not exist" << endl;
-        return 1;
     }
     if(destpath == findInDir(dest_name, dest_dir_name).file_name){
         cout << "File already exists" << endl;
@@ -469,10 +488,6 @@ FS::rm(string filepath)
         writeEntryToDir(createDirEntry("", 0, 0, 2, 0), currentDir, filepath);
         return 0;
     }
-    if(file.access_rights == 0) {
-        cout << "The selected file does not exist" << endl;
-        return 1;
-    }
 
     // Remove dir entry
     writeEntryToDir(createDirEntry("", 0, 0, 2, 0), currentDir, filepath);
@@ -495,13 +510,21 @@ int
 FS::append(string filepath1, string filepath2)
 {
     cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+    if(!hasPrivilege(findInDir(filepath1, currentDir).access_rights, READ)){
+        cout << "Permission Denied";
+        return 1;
+    }
+    if(!hasPrivilege(findInDir(filepath2, currentDir).access_rights, WRITE)){
+        cout << "Permission Denied";
+        return 1;
+    }
     dir_entry file = findInDir(filepath1, currentDir);
     dir_entry file1 = findInDir(filepath2, currentDir);
     if(file.type == 1 || file1.type == 1){ // Type is dir
         cout << "One of the files is a directory" << endl;
         return 1;
     }
-    if(file.access_rights == 0 || file1.access_rights == 0) {
+    if(file.type == 2 || file1.type == 2) {
         cout << "One of the files does not exist" << endl;
         return 1;
     }
@@ -554,7 +577,7 @@ FS::mkdir(string dirpath)
     
 
     //write new direntry to dir
-    dir_entry dir = createDirEntry(name, 0, fs_index, 1, 7);
+    dir_entry dir = createDirEntry(name, 0, fs_index, 1, READ + WRITE);
     writeEntryToDir(dir, dir_name);
 
     return 0;
@@ -625,5 +648,9 @@ int
 FS::chmod(string accessrights, string filepath)
 {
     cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+    dir_entry file = findInDir(filepath, currentDir);
+    file.access_rights = std::stoi(accessrights);
+    writeEntryToDir(file, currentDir, filepath);
+
     return 0;
 }
