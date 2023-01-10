@@ -330,6 +330,9 @@ FS::ls()
 {
     cout << "FS::ls()\n";
     cout << "name\t type\t accessrights\t size\n";
+    if(findIndexOfDir(currentDir) != 0){
+        cout << "..\t dir\t -\t -\n";
+    }
     dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir));
     int dir_index = 0;
     for(int i = 0; i < get_no_dir_entries(); i++){
