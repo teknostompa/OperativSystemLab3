@@ -5,6 +5,34 @@ FS::hasPrivilege(int access_rights, int Privilege){
     return ((access_rights&Privilege)/Privilege);
 }
 
+bool 
+FS::dirHasPrivelege(string dir_path, int Privilege){
+    if(dir_path == "/"){
+        return 0;
+    }
+    string file_path = dir_path;
+    file_path = get_real_dir(file_path);
+    file_path = file_path.substr(1); // remove first /
+    int index = 0;
+    int read_dir = 0;
+    dir_entry *dirs = (dir_entry*)readBlock(0);
+    while(file_path.length() > 1){
+        dirs = (dir_entry*)readBlock(read_dir);
+        string temp = file_path.substr(0, file_path.find_first_of('/'));
+        file_path = file_path.substr(file_path.find_first_of('/') + 1);
+        for(int i = 0 ; i < get_no_dir_entries(); i++){
+            if(dirs[i].file_name == temp){
+                index = i;
+            }
+        }
+        read_dir = dirs[index].first_blk;
+    }
+    if(!hasPrivilege(dirs[index].access_rights, WRITE)){
+        return 0;
+    }
+    return 1;
+}
+
 string 
 FS::getLine(){
     string line = " ", file;
@@ -286,6 +314,10 @@ FS::create(string filepath)
     if(findInDir(filepath, currentDir).type != 2){
         cout << "File already exists";
     }
+    if(dirHasPrivelege(currentDir, WRITE)){
+        cout << "Permission denied" << endl;
+        return 1;
+    }
     //Get full file content
     //Get free memoryspace on disk
     int fs_index = findFreeSpace();
@@ -306,7 +338,7 @@ FS::cat(string filepath)
     cout << "FS::cat(" << filepath << ")\n";
 
     if(!hasPrivilege(findInDir(filepath, currentDir).access_rights, READ)){
-        cout << "Permission Denied";
+        cout << "Permission Denied" << endl;
         return 1;
     }
 
@@ -328,6 +360,10 @@ FS::cat(string filepath)
 int
 FS::ls()
 {
+    if(dirHasPrivelege(currentDir, READ)){
+        cout << "Permission denied" << endl;
+        return 1;
+    }
     cout << "FS::ls()\n";
     cout << "name\t type\t accessrights\t size\n";
     if(findIndexOfDir(currentDir) != 0){
@@ -388,7 +424,15 @@ FS::cp(string sourcepath, string destpath)
     string dest_name = get_name_from_filepath(destpath);
     if(dest_name == ""){
         dest_name = source_name;
-    } 
+    }
+    if(!hasPrivilege(findInDir(source_name, source_dir_name).access_rights, READ)){
+        cout << "Permission Denied" << endl;
+        return 1;
+    }
+    if(dirHasPrivelege(dest_dir_name, WRITE)){
+        cout << "Permission denied" << endl;
+        return 1;
+    }
     dir_entry source = findInDir(source_name, source_dir_name);
     if(source.type == 1){ // Type is dir
         cout << "The selected file is a directory" << endl;
@@ -446,7 +490,14 @@ FS::mv(string sourcepath, string destpath)
     if(dest_name == ""){
         dest_name = source_name;
     } 
-    cout << dest_dir_name << " : " << dest_name << endl;
+    if(!hasPrivilege(findInDir(source_name, source_dir_name).access_rights, READ)){
+        cout << "Permission Denied" << endl;
+        return 1;
+    }
+    if(dirHasPrivelege(dest_dir_name, WRITE)){
+        cout << "Permission denied" << endl;
+        return 1;
+    }
 
     dir_entry source = findInDir(source_name, source_dir_name);
     if(source.type == 1){
@@ -477,6 +528,10 @@ int
 FS::rm(string filepath)
 {
     cout << "FS::rm(" << filepath << ")\n";
+    if(dirHasPrivelege(currentDir, WRITE)){
+        cout << "Permission denied" << endl;
+        return 1;
+    }
     dir_entry file = findInDir(filepath, currentDir);
     if(file.type == 1){ // Type is dir
         int empty = findInDir(0, currentDir + filepath) + findInDir(1, currentDir + filepath);
@@ -514,11 +569,11 @@ FS::append(string filepath1, string filepath2)
 {
     cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
     if(!hasPrivilege(findInDir(filepath1, currentDir).access_rights, READ)){
-        cout << "Permission Denied";
+        cout << "Permission Denied" << endl;
         return 1;
     }
     if(!hasPrivilege(findInDir(filepath2, currentDir).access_rights, WRITE)){
-        cout << "Permission Denied";
+        cout << "Permission Denied" << endl;
         return 1;
     }
     dir_entry file = findInDir(filepath1, currentDir);
@@ -556,6 +611,10 @@ int
 FS::mkdir(string dirpath)
 {
     cout << "FS::mkdir(" << dirpath << ")\n";
+    if(dirHasPrivelege(currentDir, WRITE)){
+        cout << "Permission denied" << endl;
+        return 1;
+    }
     string dir_name = get_dir_from_filepath(dirpath);
     if(dir_name == ""){
         dir_name = currentDir;

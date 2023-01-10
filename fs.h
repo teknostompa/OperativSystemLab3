@@ -42,6 +42,7 @@ private:
     string currentDir = "/";
 
     bool hasPrivilege(int access_rights, int Privilege);
+    bool dirHasPrivelege(string dir_path, int Privilege);
     string getLine();
     string getFile(string file_path, string dir_path);
     uint8_t* readBlock(int block);
