@@ -51,8 +51,7 @@ private:
     int8_t findInDir(uint8_t type, std::string dir_name);
     dir_entry findInDir(std::string file_name, std::string dir_name);
     int8_t findIndexOfDir(std::string file_name);
-    int16_t findFreeSpace();
-    int16_t findFreeSpace(uint16_t offset);
+    int16_t findFreeSpace(uint16_t offset = 0);
     int16_t get_no_dir_entries();
     int16_t get_next_block(int block);
     string get_real_dir(string dir_path);

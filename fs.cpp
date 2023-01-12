@@ -8,7 +8,7 @@ FS::hasPrivilege(int access_rights, int Privilege){
 bool 
 FS::dirHasPrivelege(string dir_path, int Privilege){
     if(dir_path == "/"){
-        return 0;
+        return 1;
     }
     string file_path = dir_path;
     file_path = get_real_dir(file_path);
@@ -113,7 +113,7 @@ FS::findIndexOfDir(string file_path){
     }
     return read_dir;
 }
-
+ 
 int8_t 
 FS::findInDir(uint8_t type, std::string dir_name){
     dir_name = get_real_dir(dir_name);
@@ -138,19 +138,6 @@ FS::findInDir(std::string file_name, string dir_name){
         }
     }
     return createDirEntry("", 0, 0, 2, 0);
-}
-
-
-int16_t 
-FS::findFreeSpace(){
-    uint16_t *fs = (uint16_t*)readBlock(1);
-    for(int i = 2; i < disk.get_no_blocks(); i++){
-        if(fs[i] == FAT_FREE){
-            return i;
-        }
-    }
-    cout << "The disk is full" << endl;
-    return -1;
 }
 
 int16_t 
@@ -185,7 +172,7 @@ FS::get_real_dir(string dir_path){
 void 
 FS::writeDirectory(int16_t block){
     dir_entry *blk = new dir_entry[get_no_dir_entries()];
-    dir_entry dir = createDirEntry("", 0, -1, 2, 0);
+    dir_entry dir = createDirEntry("", 0, 0, 2, 0);
     for(int i = 0; i < get_no_dir_entries(); i++){
         memcpy(&blk[i], &dir, sizeof(dir_entry));
     }
@@ -241,14 +228,13 @@ FS::writeEntryToDir(dir_entry entry, string dir_path, string old_name){
     }
     memcpy(&dirs[index], &entry, sizeof(dir_entry));
     writeBlock(findIndexOfDir(dir_path), (uint8_t*)dirs);
-
     return 0;
 }
 
 string 
 FS::get_dir_from_filepath(string filepath){
     if(filepath == ".."){
-        return currentDir.substr(0, currentDir.find_last_of('/'));
+        return currentDir.substr(0, currentDir.find_last_of('/') + 1);
     }
     if(filepath.substr(0,2) == "..") filepath = filepath.substr(2);
     while(filepath.find(".") != -1){
@@ -269,6 +255,9 @@ FS::get_name_from_filepath(string filepath){
     return filepath.substr(filepath.find_last_of('/') + 1);
 }
 
+
+// Pre-made functions
+
 FS::FS()
 {
     cout << "FS::FS()... Creating file system\n";
@@ -282,20 +271,15 @@ int
 FS::format()
 {
     cout << "FS::format()\n";
-    // First we have to clean the 0:th block so that any remains
-    // of the previous filesystem is deleted.
     writeDirectory(0);
-    // Now we have to format the 1:th block so that all the fs values
-    // are free and 0-1 is EOF according to specification.
     int16_t *fs = (int16_t*)readBlock(1);
-    for(int i = 0; i < disk.get_no_blocks(); i++){
+    for(int i = 0; i < disk.get_no_blocks(); i++)
         fs[i] = FAT_FREE;
-    }
     fs[0] = FAT_EOF;
     fs[1] = FAT_EOF;
     disk.write(1, (uint8_t*)fs);
+    currentDir = "/";
     delete[] fs;
-    // When we are done, we delete references and return
     return 0;
 }
 
@@ -305,29 +289,37 @@ int
 FS::create(string filepath)
 {
     cout << "FS::create(" << filepath << ")\n";
-    //Handle error for long filename
-    if(filepath.length() > 55){
+    string dir_name = get_dir_from_filepath(filepath);
+    if(dir_name == ""){
+        dir_name = currentDir;
+    }
+    string name = get_name_from_filepath(filepath);
+    if(name.length() > 55){
         cout<< "file name too long"<< endl;
         return 1;
     }
-    string file = getLine();
-    if(findInDir(filepath, currentDir).type != 2){
-        cout << "File already exists";
+    if(findInDir(name, dir_name).type != 2){
+        cout << "Name already exists" << endl;
+        return 1;
     }
-    if(dirHasPrivelege(currentDir, WRITE)){
+    if(!dirHasPrivelege(dir_name, WRITE)){
         cout << "Permission denied" << endl;
         return 1;
     }
-    //Get full file content
-    //Get free memoryspace on disk
+    string file = getLine();
     int fs_index = findFreeSpace();
-    if(fs_index == -1) return 1;
-    
-    if(writeFile(file, fs_index) == -1) return 1;
-
-    //Find place for dir and make new direntry
-    //write new direntry to dir
-    if(writeEntryToDir(createDirEntry(filepath, file.length(), fs_index, 0, READ + WRITE), currentDir) == -1) return 1;
+    if(fs_index == -1) {
+        cout << "Disk is full" << endl;
+        return 1;
+    }
+    if(writeFile(file, fs_index) == -1) {
+        cout << "Disk is full" << endl;
+        return 1;
+    }
+    if(writeEntryToDir(createDirEntry(name, file.length(), fs_index, 0, READ + WRITE), dir_name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     return 0;
 }
 
@@ -336,23 +328,24 @@ int
 FS::cat(string filepath)
 {
     cout << "FS::cat(" << filepath << ")\n";
-
-    if(!hasPrivilege(findInDir(filepath, currentDir).access_rights, READ)){
+    string dir_name = get_dir_from_filepath(filepath);
+    if(dir_name == ""){
+        dir_name = currentDir;
+    }
+    string name = get_name_from_filepath(filepath);
+    if(!hasPrivilege(findInDir(name, dir_name).access_rights, READ)){
         cout << "Permission Denied" << endl;
         return 1;
     }
-
-    if(findInDir(filepath, currentDir).type == 1){
+    if(findInDir(name, dir_name).type == 1){
         cout << "Cannot read from directory" << endl;
         return 1;
     }
-
-    if(findInDir(filepath, currentDir).type == 2){
+    if(findInDir(name, dir_name).type == 2){
         cout << "File not found" << endl;
         return 1;
     }
-
-    cout << getFile(filepath, currentDir) << endl;
+    cout << getFile(name, dir_name) << endl;
     return 0;
 }
 
@@ -360,15 +353,14 @@ FS::cat(string filepath)
 int
 FS::ls()
 {
-    if(dirHasPrivelege(currentDir, READ)){
+    if(!dirHasPrivelege(currentDir, READ)){
         cout << "Permission denied" << endl;
         return 1;
     }
     cout << "FS::ls()\n";
     cout << "name\t type\t accessrights\t size\n";
-    if(findIndexOfDir(currentDir) != 0){
+    if(findIndexOfDir(currentDir) != 0)
         cout << "..\t dir\t -\t -\n";
-    }
     dir_entry *dirs = (dir_entry*)readBlock(findIndexOfDir(currentDir));
     int dir_index = 0;
     for(int i = 0; i < get_no_dir_entries(); i++){
@@ -376,12 +368,10 @@ FS::ls()
             string access = ((hasPrivilege(dirs[i].access_rights, READ)) ? "r" : "-");
             access += ((hasPrivilege(dirs[i].access_rights, WRITE)) ? 'w': '-');
             access += ((hasPrivilege(dirs[i].access_rights, EXECUTE)) ? 'x': '-');
-            if(access.substr(0,2) == "--"){
+            if(access.substr(0,2) == "--")
                 access = access.substr(1);
-            }
-            if(access.substr(1) == "--"){
+            if(access.substr(1) == "--")
                 access = access.substr(0,2);
-            }
             cout<<dirs[i].file_name << "\t dir\t " << access << "\t -" << endl;
         }
     }
@@ -390,16 +380,13 @@ FS::ls()
             string access = ((hasPrivilege(dirs[i].access_rights, READ)) ? "r" : "-");
             access += ((hasPrivilege(dirs[i].access_rights, WRITE)) ? 'w': '-');
             access += ((hasPrivilege(dirs[i].access_rights, EXECUTE)) ? 'x': '-');
-            if(access.substr(0,2) == "--"){
+            if(access.substr(0,2) == "--")
                 access = access.substr(1);
-            }
-            if(access.substr(1) == "--"){
+            if(access.substr(1) == "--")
                 access = access.substr(0,2);
-            }
             cout<<dirs[i].file_name << "\t file\t " << access << "\t " << to_string(dirs[i].size) << endl;
         }
     }
-    
     delete[] dirs;
     return 0;
 }
@@ -425,11 +412,12 @@ FS::cp(string sourcepath, string destpath)
     if(dest_name == ""){
         dest_name = source_name;
     }
+
     if(!hasPrivilege(findInDir(source_name, source_dir_name).access_rights, READ)){
         cout << "Permission Denied" << endl;
         return 1;
     }
-    if(dirHasPrivelege(dest_dir_name, WRITE)){
+    if(!dirHasPrivelege(dest_dir_name, WRITE)){
         cout << "Permission denied" << endl;
         return 1;
     }
@@ -438,32 +426,25 @@ FS::cp(string sourcepath, string destpath)
         cout << "The selected file is a directory" << endl;
         return 1;
     }
-    if(findInDir(dest_name, dest_dir_name).type == 1){ // Type is dir
-        // Find first block
-        int8_t first_block = findFreeSpace();
-        if(first_block == -1) return 1;
-
-        // Create dir entry for new file 
-        dir_entry dest = createDirEntry(source_name, source.size, first_block, source.type, source.access_rights);
-        if(writeEntryToDir(dest, dest_dir_name + dest_name) == -1) return 1;
-
-        string file = getFile(source_name, source_dir_name);
-        writeFile(file, first_block);
-        return 0;
-    }
     if(destpath == findInDir(dest_name, dest_dir_name).file_name){
+        cout << dest_dir_name << " : " << dest_name << endl;
         cout << "File already exists" << endl;
         return 1;
     }
-
-    // Find first block
+    if(findInDir(dest_name, dest_dir_name).type == 1){
+        dest_dir_name += dest_name;
+        dest_name = source_name;
+    }
     int8_t first_block = findFreeSpace();
-    if(first_block == -1) return 1;
-
-    // Create dir entry for new file 
+    if(first_block == -1) {
+        cout << "Disk is full" << endl;
+        return 1;
+    }
     dir_entry dest = createDirEntry(dest_name, source.size, first_block, source.type, source.access_rights);
-    if(writeEntryToDir(dest, dest_dir_name) == -1) return 1;
-
+    if(writeEntryToDir(dest, dest_dir_name) == -1) {
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     string file = getFile(source_name, source_dir_name);
     writeFile(file, first_block);
     return 0;
@@ -494,7 +475,7 @@ FS::mv(string sourcepath, string destpath)
         cout << "Permission Denied" << endl;
         return 1;
     }
-    if(dirHasPrivelege(dest_dir_name, WRITE)){
+    if(!dirHasPrivelege(dest_dir_name, WRITE)){
         cout << "Permission denied" << endl;
         return 1;
     }
@@ -510,16 +491,20 @@ FS::mv(string sourcepath, string destpath)
         writeEntryToDir(source, source_dir_name, source_name);
         return 0;
     }
-    if(destpath == findInDir(dest_name, dest_dir_name).file_name){
+    if(dest_name == findInDir(dest_name, dest_dir_name).file_name){
         cout << "File already exists" << endl;
         return 1;
     }
-
     source = createDirEntry(dest_name, source.size, source.first_blk, source.type, source.access_rights);
-    cout << dest_dir_name << " : " << dest_name << endl;
-    writeEntryToDir(source, dest_dir_name + dest_name);
+    if(writeEntryToDir(source, dest_dir_name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     source = createDirEntry("", 0, 0, 2, 0);
-    writeEntryToDir(source, source_dir_name, source_name);
+    if(writeEntryToDir(source, source_dir_name, source_name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     return 0;
 }
 
@@ -528,28 +513,35 @@ int
 FS::rm(string filepath)
 {
     cout << "FS::rm(" << filepath << ")\n";
-    if(dirHasPrivelege(currentDir, WRITE)){
+    string dir_name = get_dir_from_filepath(filepath);
+    if(dir_name == ""){
+        dir_name = currentDir;
+    }
+    string name = get_name_from_filepath(filepath);
+    if(!dirHasPrivelege(currentDir, WRITE)){
         cout << "Permission denied" << endl;
         return 1;
     }
-    dir_entry file = findInDir(filepath, currentDir);
+    dir_entry file = findInDir(dir_name, dir_name);
     if(file.type == 1){ // Type is dir
-        int empty = findInDir(0, currentDir + filepath) + findInDir(1, currentDir + filepath);
+        int empty = findInDir(0, dir_name + name) + findInDir(1, dir_name + name);
         if(empty != -2){
             cout << "Directory is not empty" << endl;
             return 1;
         }
-        // Remove dir
         int16_t *fs = (int16_t*)readBlock(1);
         fs[file.first_blk] = FAT_FREE;
         writeBlock(1, (uint8_t*)fs);
-        writeEntryToDir(createDirEntry("", 0, 0, 2, 0), currentDir, filepath);
+        if(writeEntryToDir(createDirEntry("", 0, 0, 2, 0), dir_name, name) == -1){
+            cout << "Directory is full" << endl;
+            return 1;
+        }
         return 0;
     }
-
-    // Remove dir entry
-    writeEntryToDir(createDirEntry("", 0, 0, 2, 0), currentDir, filepath);
-    // Mark all fat blocks as free
+    if(writeEntryToDir(createDirEntry("", 0, 0, 2, 0), dir_name, name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     int16_t source_block = file.first_blk;
     int16_t *fs = (int16_t*)readBlock(1);
     while(source_block != FAT_EOF) {
@@ -558,7 +550,6 @@ FS::rm(string filepath)
         source_block = temp;
     }
     writeBlock(1, (uint8_t*)fs);
-
     return 0;
 }
 
@@ -568,16 +559,29 @@ int
 FS::append(string filepath1, string filepath2)
 {
     cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
-    if(!hasPrivilege(findInDir(filepath1, currentDir).access_rights, READ)){
+    
+    string source_dir_name = get_dir_from_filepath(filepath1);
+    if(source_dir_name == ""){
+        source_dir_name = currentDir;
+    }
+    string source_name = get_name_from_filepath(filepath1);
+
+    string dest_dir_name = get_dir_from_filepath(filepath2);
+    if(dest_dir_name == ""){
+        dest_dir_name = currentDir;
+    }
+    string dest_name = get_name_from_filepath(filepath2);
+
+    if(!hasPrivilege(findInDir(source_name, source_dir_name).access_rights, READ)){
         cout << "Permission Denied" << endl;
         return 1;
     }
-    if(!hasPrivilege(findInDir(filepath2, currentDir).access_rights, WRITE)){
+    if(!hasPrivilege(findInDir(dest_name, dest_dir_name).access_rights, WRITE)){
         cout << "Permission Denied" << endl;
         return 1;
     }
-    dir_entry file = findInDir(filepath1, currentDir);
-    dir_entry file1 = findInDir(filepath2, currentDir);
+    dir_entry file = findInDir(source_name, source_dir_name);
+    dir_entry file1 = findInDir(dest_name, dest_dir_name);
     if(file.type == 1 || file1.type == 1){ // Type is dir
         cout << "One of the files is a directory" << endl;
         return 1;
@@ -586,7 +590,7 @@ FS::append(string filepath1, string filepath2)
         cout << "One of the files does not exist" << endl;
         return 1;
     }
-    string append_text = getFile(filepath1, currentDir);
+    string append_text = getFile(source_name, source_dir_name);
     int16_t *fs = (int16_t*)readBlock(1);
     int16_t file_block = file1.first_blk;
     int file_size = file1.size + file.size;
@@ -596,12 +600,13 @@ FS::append(string filepath1, string filepath2)
     }
     int fittable = 4096-(file.size%4096);
     string content = (char*) readBlock(file_block);
-
-    content = content + append_text.substr(0,fittable);
+    content = content + append_text;
     writeFile(content, file_block);
-
     dir_entry source = createDirEntry(file1.file_name, temp_size, file1.first_blk, file1.type, file1.access_rights);
-    writeEntryToDir(source, currentDir, file1.file_name);
+    if(writeEntryToDir(source, source_dir_name, file1.file_name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     return 0;
 }
 
@@ -611,37 +616,32 @@ int
 FS::mkdir(string dirpath)
 {
     cout << "FS::mkdir(" << dirpath << ")\n";
-    if(dirHasPrivelege(currentDir, WRITE)){
+    if(!dirHasPrivelege(currentDir, WRITE)){
         cout << "Permission denied" << endl;
         return 1;
     }
     string dir_name = get_dir_from_filepath(dirpath);
-    if(dir_name == ""){
-        dir_name = currentDir;
-    }
+    if(dir_name == "") dir_name = currentDir;
     string name = get_name_from_filepath(dirpath);
-    //Handle error for long filename
     if(name.length() > 55){
         cout<< "file name too long"<< endl;
         return 1;
     }
-
     if(findInDir(name, dir_name).type != 2){
         cout << "Specified path is already used" << endl;
         return 1;
     }
-
-    //Get free memoryspace on disk
     int fs_index = findFreeSpace();
-    if(fs_index == -1) return 1;
-
+    if(fs_index == -1){
+        cout << "Disk is full" << endl;
+        return 1;
+    }
     writeDirectory(fs_index);
-    
-
-    //write new direntry to dir
     dir_entry dir = createDirEntry(name, 0, fs_index, 1, READ + WRITE);
-    writeEntryToDir(dir, dir_name);
-
+    if(writeEntryToDir(dir, dir_name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     return 0;
 }
 
@@ -651,24 +651,18 @@ FS::cd(string dirpath)
 {
     cout << "FS::cd(" << dirpath << ")\n";
     string dir_name = get_dir_from_filepath(dirpath);
-    if(dir_name == ""){
-        dir_name = currentDir;
-    }
     string name = get_name_from_filepath(dirpath);
-
-    if(dir_name == "/"){
+    if(dir_name == "") dir_name = currentDir;
+    else if(dir_name == "/"){
         currentDir = dir_name + name;
         return 0;
     }
     if(name == ".."){
-        if(dir_name.length() > 1){
-            dir_name = dir_name.substr(0, dir_name.find_last_of("/"));
-        }
-        if(dir_name == ""){
-            dir_name = "/";
-        }
+        if(dir_name.length() > 1) dir_name = dir_name.substr(0, dir_name.find_last_of("/"));
+        if(dir_name == "") dir_name = "/";
         return 0;
     }
+
     switch (findInDir(name, dir_name).type)
     {
     case 0:
@@ -710,9 +704,13 @@ int
 FS::chmod(string accessrights, string filepath)
 {
     cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
-    dir_entry file = findInDir(filepath, currentDir);
+    string dir_name = get_dir_from_filepath(filepath);
+    string name = get_name_from_filepath(filepath);
+    dir_entry file = findInDir(name, dir_name);
     file.access_rights = std::stoi(accessrights);
-    writeEntryToDir(file, currentDir, filepath);
-
+    if(writeEntryToDir(file, dir_name, name) == -1){
+        cout << "Directory is full" << endl;
+        return 1;
+    }
     return 0;
 }
